@@ -6,6 +6,7 @@ on:
       - 'data/**'
       - 'db/init.js'
       - 'package.json'
+  workflow_dispatch:
 
 jobs:
   build-db:
@@ -26,11 +27,14 @@ jobs:
       - name: Run init-db script
         run: node db/init.js
 
-      - name: Commit responses.db
+      - name: Commit responses.db if exists
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add db/responses.db
-          git commit -m "Auto-generate responses.db"
-          git push
-        continue-on-error: true
+          if [ -f db/responses.db ]; then
+            git add db/responses.db
+            git commit -m "chore: auto-generate responses.db"
+            git push
+          else
+            echo "⚠️ responses.db not found, skipping commit."
+          fi
