@@ -1,41 +1,44 @@
-import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
+import path from 'path';
 
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const used = {
+  Bot: new Set(),
+  Questions: new Set(),
+};
 
-export default async function handler(req, res) {
+function loadResponses(category) {
+  const filePath = path.join(process.cwd(), 'data', `${category}.json`);
+  const raw = fs.readFileSync(filePath, 'utf-8');
+  return JSON.parse(raw);
+}
+
+function getRandom(category) {
+  const all = loadResponses(category);
+  const unused = all.filter((_, i) => !used[category].has(i));
+
+  if (unused.length === 0) {
+    used[category].clear();
+    return getRandom(category);
+  }
+
+  const index = Math.floor(Math.random() * unused.length);
+  const realIndex = all.indexOf(unused[index]);
+  used[category].add(realIndex);
+
+  return unused[index];
+}
+
+export default function handler(req, res) {
   const { category } = req.query;
 
-  if (!category || (category !== 'Bot' && category !== 'Questions')) {
-    return res.status(400).json({ error: 'Invalid or missing category' });
+  if (!category || !['Bot', 'Questions'].includes(category)) {
+    return res.status(400).json({ error: 'Invalid category' });
   }
 
-  // جلب رد غير مستخدم
-  const { data, error } = await supabase
-    .from('responses')
-    .select('*')
-    .eq('category', category)
-    .eq('used', false)
-    .order('random()')
-    .limit(1);
-
-  if (error) return res.status(500).json({ error: error.message });
-
-  const response = data?.[0];
-
-  if (!response) {
-    // إعادة تعيين الردود
-    await supabase
-      .from('responses')
-      .update({ used: false })
-      .eq('category', category);
-    return handler(req, res); // إعادة المحاولة
+  try {
+    const response = getRandom(category);
+    return res.status(200).json({ response });
+  } catch (e) {
+    return res.status(500).json({ error: 'Error reading responses' });
   }
-
-  // تعليم الرد كمستخدم
-  await supabase
-    .from('responses')
-    .update({ used: true })
-    .eq('id', response.id);
-
-  return res.status(200).json({ response: response.text });
 }
